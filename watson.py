@@ -1,5 +1,6 @@
 import numpy as np
 import datetime
+import time
 
 from scipy.special import gamma
 # References:
@@ -41,13 +42,7 @@ def pdf(X,mu,kappa):
     return cp * np.exp(kappa * np.einsum('i,ji->j',mu,X)**2)
 
 def wmm_pdf(X,Mu,Kappa,Pi):
-    (N,p) = X.shape
-    f = np.zeros(N)
-    for mu,kappa,pi in zip(Mu,Kappa,Pi):
-        cp = gamma(p/2) / (2*np.pi**(p/2) * (kummer(1/2,p/2,kappa)))
-        f += pi * pdf(X,mu,kappa)
-
-    return f
+    return np.sum([pi * pdf(X,mu,kappa) for mu,kappa,pi in zip(Mu,Kappa,Pi)],axis=0)
 
 def print_t(s,verbose):
     if verbose:
