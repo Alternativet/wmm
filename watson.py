@@ -16,7 +16,7 @@ def pdf(X,mu,kappa):
 def wmm_pdf(X,Mu,Kappa,Pi):
     return np.sum([pi * pdf(X,mu,kappa) for mu,kappa,pi in zip(Mu,Kappa,Pi)],axis=0)
 
-def wmm_fit(X,k,maxkappa=700,maxiter=200,tol=1e-4,verbose=False,seed=None):
+def wmm_fit(X,k,maxkappa=700,maxiter=200,tol=1e-4,verbose=False,seed=None,init=None):
     if seed is not None:
         np.random.seed(seed)
 
@@ -24,13 +24,16 @@ def wmm_fit(X,k,maxkappa=700,maxiter=200,tol=1e-4,verbose=False,seed=None):
     (N,p) = X.shape
 
     # Initialization
-    if p == 3:
-        mu,kappa,pi = init_parameters(k)
-    else:
-        mu,kappa,pi = np.zeros((k,p)),np.zeros(k),np.zeros(k)
-        beta = np.random.rand(N,k)
-        beta = beta/np.sum(beta,axis=1)[:,np.newaxis]
-        mu,kappa,pi,_ = m_step(X,mu,kappa,pi,beta,k,N,p,maxkappa)
+    if init is None:
+        if p == 3:
+            mu,kappa,pi = golden_spiral_init(k)
+        else:
+            mu,kappa,pi = random_init(k,X,N,p,maxkappa)
+    elif init == 'spiral':
+        assert p == 3
+        mu,kappa,pi = golden_spiral_init(k)
+    elif init == 'random':
+        mu,kappa,pi = random_init(k,X,N,p,maxkappa)
 
     # Allocation
     bounds = np.zeros((maxiter,k,3));
@@ -51,7 +54,14 @@ def wmm_fit(X,k,maxkappa=700,maxiter=200,tol=1e-4,verbose=False,seed=None):
     bounds = bounds[:iter]
     return mu,kappa,pi,llh,bounds
 
-def init_parameters(k):
+def random_init(k,X,N,p,maxkappa):
+    mu,kappa,pi = np.zeros((k,p)),np.zeros(k),np.zeros(k)
+    beta = np.random.rand(N,k)
+    beta = beta/np.sum(beta,axis=1)[:,np.newaxis]
+    mu,kappa,pi,_ = m_step(X,mu,kappa,pi,beta,k,N,p,maxkappa)
+    return mu,kappa,pi
+
+def golden_spiral_init(k):
     # Initialise mu based on "The golden spiral method" https://stackoverflow.com/a/44164075/6843855
     indices = np.arange(0, k, dtype=float) + 0.5
     phi = np.arccos(1 - 2*indices/(2*k))
