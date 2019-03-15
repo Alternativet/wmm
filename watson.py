@@ -118,7 +118,7 @@ def convergence(llh,iter,maxiter,tol,verbose):
         print_t('Did not converge in maximum iterations')
         return True
 
-    if iter+1 % 10 == 0:
+    if (iter+1) % 10 == 0:
         print_t('Iteration: {:d}, relative llh change: {:.2g}'.format(iter+1,(llh[iter] - llh[iter-1])/llh[iter-1]),verbose)
 
     return False
@@ -133,21 +133,16 @@ def bound(a,c,r):
 def upper_bound(a,c,r):
     return (r*c-a)/(r*(1-r))*(1+r/a)
 
-def kummer(a,c,x):
-    # Adapted from https://github.com/yuhuichen1015/SphericalDistributionsRand/blob/master/kummer.m
-    tol = 1e-10;
-    term = x*a/c;
-    f = 1 + term;
-    n = 1;
-    an = a;
-    cn = c;
-    nmin = 10;
-    while n < nmin or abs(term) > tol:
-        n = n + 1;
-        an = an + 1;
-        cn = cn + 1;
-        term = x*term*an/cn/n;
-        f = f + term;
+def kummer(a,b,kappa,tol=1e-10):
+    term = a*kappa/b
+    f = 1+term;
+    j = 1;
+    while abs(term) > tol:
+        j += 1;
+        a += 1;
+        b += 1;
+        term *= a*kappa/b/j;
+        f += term;
 
     return f
 
