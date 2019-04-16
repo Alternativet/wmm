@@ -9,33 +9,63 @@ from scipy.special import gamma
 
 
 def pdf(X, mu, kappa):
+    """Evaluates the pdf defined from a Watson distribution
+
+    Parameters
+    ----------
+    X: Points to evaluate the pdf in with shape (N, p), where N is number of points and p is dimensionality
+    mu: Mean
+    kappa: Concentration
+    """
     (N, p) = X.shape
     cp = gamma(p/2) / (2*np.pi**(p/2) * (kummer(1/2, p/2, kappa)))
     return cp * np.exp(kappa * np.einsum('i,ji->j', mu, X)**2)
 
 
 def wmm_pdf(X, Mu, Kappa, Pi):
+    """Evaluates the pdf defined from a mixture of Watson distributions
+
+    Parameters
+    ----------
+    X: Points to evaluate the pdf in with shape (N, p), where N is number of points and p is dimensionality
+    Mu: List of means
+    Kappa: List of concentration
+    Pi: List of priors
+    """
     return np.sum([pi * pdf(X, mu, kappa) for mu, kappa, pi in zip(Mu, Kappa, Pi)], axis=0)
 
 
 def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None, init=None):
-    if seed is not None:
-        np.random.seed(seed)
+    """Fits a mixture of Watsons
+
+    Parameters
+    ----------
+    X: Data to base the model on with shape (N, p), where N is number of points and p is dimensionality
+    k: Number of kernels
+    init: How to initialize the model.
+        "random" for random initialization
+        "spiral" for initialization based on golden spiral method (only works for 3d)
+        a list of [Mu, Kappa, Pi] for another predetermined initialization
+    """
+
+    np.random.seed(seed)
 
     # Get dimensions
     (N, p) = X.shape
 
     # Initialization
-    if init is None:
+    if isinstance(init, list) or isinstance(init, tuple):
+        mu, kappa, pi = [x.copy() for x in init]
+    elif isinstance(init, str) and init.lower() == 'spiral':
+        assert p == 3
+        mu, kappa, pi = golden_spiral_init(k)
+    elif isinstance(init, str) and init.lower() == 'random':
+        mu, kappa, pi = random_init(k, p)
+    else:
         if p == 3:
             mu, kappa, pi = golden_spiral_init(k)
         else:
-            mu, kappa, pi = random_init(k, X, N, p, maxkappa)
-    elif init == 'spiral':
-        assert p == 3
-        mu, kappa, pi = golden_spiral_init(k)
-    elif init == 'random':
-        mu, kappa, pi = random_init(k, X, N, p, maxkappa)
+            mu, kappa, pi = random_init(k, p)
 
     # Allocation
     bounds = np.zeros((maxiter, k, 3))
@@ -48,7 +78,7 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
     # EM loop
     while not converged:
         beta, llh[iter] = e_step(X, mu, kappa, pi, num, k, p)
-        mu, kappa, pi, bounds[iter, :] = m_step(X, mu, kappa, pi, beta, k, N, p, maxkappa)
+        mu, kappa, pi, bounds[iter, :] = m_step(X, mu, beta, k, N, p, maxkappa)
         converged = convergence(llh, iter, maxiter, tol, verbose)
         iter += 1
 
@@ -57,11 +87,14 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
     return mu, kappa, pi, llh, bounds
 
 
-def random_init(k, X, N, p, maxkappa):
-    mu, kappa, pi = np.zeros((k, p)), np.zeros(k), np.zeros(k)
-    beta = np.random.rand(N, k)
-    beta = beta/np.sum(beta, axis=1)[:, np.newaxis]
-    mu, kappa, pi = m_step(X, mu, kappa, pi, beta, k, N, p, maxkappa)
+def random_init(k, p):
+    # Randomly initialize mu
+    mu = np.random.normal(size=(k, p))
+    mu = mu/np.linalg.norm(mu, axis=1)[:, np.newaxis]
+
+    # Initalize kappa and pi
+    kappa = np.ones(k)
+    pi = np.ones(k)/k
     return mu, kappa, pi
 
 
@@ -72,10 +105,8 @@ def golden_spiral_init(k):
     theta = np.pi * (1 + 5**0.5) * indices
     mu = np.stack((np.cos(theta) * np.sin(phi), np.sin(theta) * np.sin(phi), np.cos(phi)), axis=1)
 
-    # Initalize kappa
+    # Initalize kappa and pi
     kappa = np.ones(k)
-
-    # Initialize pi
     pi = np.ones(k)/k
 
     return mu, kappa, pi
@@ -94,10 +125,11 @@ def e_step(X, mu, kappa, pi, num, k, p):
     return beta, llh
 
 
-def m_step(X, mu, kappa, pi, beta, k, N, p, maxkappa):
+def m_step(X, mu, beta, k, N, p, maxkappa):
     bounds = np.zeros((k, 3))
 
     # Maximization
+    kappa = np.zeros(k)
     pi = np.sum(beta, axis=0)/N
     for j in range(k):  # For each component
         # Compute Sj (4.5)
