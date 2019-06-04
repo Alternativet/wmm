@@ -54,8 +54,10 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
     (N, p) = X.shape
 
     # Initialization
-    if isinstance(init, list) or isinstance(init, tuple):
-        mu, kappa, pi = [x.copy() for x in init]
+    if isinstance(init, dict):
+        mu = init['mu'].copy()
+        kappa = init['kappa'].copy()
+        pi = init['pi'].copy()
     elif isinstance(init, str) and init.lower() == 'spiral':
         assert p == 3
         mu, kappa, pi = golden_spiral_init(k)
@@ -68,22 +70,19 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
             mu, kappa, pi = random_init(k, p)
 
     # Allocation
-    bounds = np.zeros((maxiter, k, 3))
     llh = np.zeros((maxiter))
-    num = np.zeros((N, k))
 
     iter = 0
     converged = False
 
     # EM loop
     while not converged:
-        beta, llh[iter] = e_step(X, mu, kappa, pi, num, k, p)
-        mu, kappa, pi, bounds[iter, :] = m_step(X, mu, beta, k, N, p, maxkappa)
+        beta, llh[iter] = e_step(X, mu, kappa, pi, k, p)
+        mu, kappa, pi, bounds = m_step(X, mu, beta, k, N, p, maxkappa)
         converged = convergence(llh, iter, maxiter, tol, verbose)
         iter += 1
 
     llh = llh[:iter]
-    bounds = bounds[:iter]
     return mu, kappa, pi, llh, bounds
 
 
@@ -112,8 +111,9 @@ def golden_spiral_init(k):
     return mu, kappa, pi
 
 
-def e_step(X, mu, kappa, pi, num, k, p):
+def e_step(X, mu, kappa, pi, k, p):
     # Expectation
+    num = np.zeros((X.shape[0], k))
     for j in range(k):  # For each component
         cp = gamma(p/2) / (2*np.pi**(p/2) * (kummer(1/2, p/2, kappa[j])))
         # Uses Watson distribution (2.1) [1], compute using 4.3 [1]
@@ -141,9 +141,9 @@ def m_step(X, mu, beta, k, N, p, maxkappa):
         # Compute Kappa using (4.5) [1]
         r = np.einsum('i,ji,j->', mu[j, :], Sj, mu[j, :])  # mu'*Sj*mu
         r = 0.99 if r > 0.999 else r
-        kappa[j] = lower_bound(1/2, p/2, r)
-        kappa[j] = maxkappa if kappa[j] > maxkappa else kappa[j]
         bounds[j, :] = [lower_bound(1/2, p/2, r), bound(1/2, p/2, r), upper_bound(1/2, p/2, r)]
+        kappa[j] = bounds[j, 1]
+        kappa[j] = kappa[j] if maxkappa > kappa[j] else maxkappa
 
     return mu, kappa, pi, bounds
 
