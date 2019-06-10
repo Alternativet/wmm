@@ -35,7 +35,7 @@ def wmm_pdf(X, Mu, Kappa, Pi):
     return np.sum([pi * pdf(X, mu, kappa) for mu, kappa, pi in zip(Mu, Kappa, Pi)], axis=0)
 
 
-def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None, init=None):
+def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None, init=None, return_steps=False):
     """Fits a mixture of Watsons
 
     Parameters
@@ -71,6 +71,10 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
 
     # Allocation
     llh = np.zeros((maxiter))
+    Mu = np.zeros((maxiter, ) + mu.shape)
+    Kappa = np.zeros((maxiter, ) + kappa.shape)
+    Bounds = np.zeros((maxiter, ) + kappa.shape + (3, ))
+    Pi = np.zeros((maxiter, ) + pi.shape)
 
     iter = 0
     converged = False
@@ -80,9 +84,20 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
         beta, llh[iter] = e_step(X, mu, kappa, pi, k, p)
         mu, kappa, pi, bounds = m_step(X, mu, beta, k, N, p, maxkappa)
         converged = convergence(llh, iter, maxiter, tol, verbose)
+        Mu[iter] = mu
+        Kappa[iter] = kappa
+        Bounds[iter] = bounds
+        Pi[iter] = pi
         iter += 1
 
     llh = llh[:iter]
+    if return_steps:
+        Mu = Mu[:iter]
+        Kappa = Kappa[:iter]
+        Bounds = Bounds[:iter]
+        Pi = Pi[:iter]
+        return Mu, Kappa, Pi, llh, Bounds
+
     return mu, kappa, pi, llh, bounds
 
 
@@ -150,15 +165,15 @@ def m_step(X, mu, beta, k, N, p, maxkappa):
 
 def convergence(llh, iter, maxiter, tol, verbose):
     # Convergece
-    if iter > 0 and abs((llh[iter] - llh[iter-1])/llh[iter-1]) < tol:
+    if iter > 0:
+        print_t('Iteration: {:d}, relative llh change: {:.2g}'.format(iter+1, (llh[iter] - llh[iter-1])/abs(llh[iter-1])), verbose)
+
+    if iter > 0 and (llh[iter] - llh[iter-1])/abs(llh[iter-1]) < tol:
         print_t('Conveged in {} iterations'.format(iter+1), verbose)
         return True
     elif iter >= maxiter-1:
         print_t('Did not converge in maximum iterations')
         return True
-
-    if (iter+1) % 10 == 0:
-        print_t('Iteration: {:d}, relative llh change: {:.2g}'.format(iter+1, (llh[iter] - llh[iter-1])/llh[iter-1]), verbose)
 
     return False
 
