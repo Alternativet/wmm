@@ -77,10 +77,10 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
     Pi = np.zeros((maxiter, ) + pi.shape)
 
     iter = 0
-    converged = False
+    converged = -1
 
     # EM loop
-    while not converged:
+    while converged < 0:
         beta, llh[iter] = e_step(X, mu, kappa, pi, k, p)
         mu, kappa, pi, bounds = m_step(X, mu, beta, k, N, p, maxkappa)
         converged = convergence(llh, iter, maxiter, tol, verbose)
@@ -90,15 +90,15 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
         Pi[iter] = pi
         iter += 1
 
-    llh = llh[:iter]
+    llh = llh[:converged+1]
     if return_steps:
-        Mu = Mu[:iter]
-        Kappa = Kappa[:iter]
-        Bounds = Bounds[:iter]
-        Pi = Pi[:iter]
+        Mu = Mu[:converged+1]
+        Kappa = Kappa[:converged+1]
+        Bounds = Bounds[:converged+1]
+        Pi = Pi[:converged+1]
         return Mu, Kappa, Pi, llh, Bounds
 
-    return mu, kappa, pi, llh, bounds
+    return Mu[converged], Kappa[converged], Pi[converged], llh, Bounds[converged]
 
 
 def random_init(k, p):
@@ -169,13 +169,17 @@ def convergence(llh, iter, maxiter, tol, verbose):
         print_t('Iteration: {:d}, relative llh change: {:.2g}'.format(iter+1, (llh[iter] - llh[iter-1])/abs(llh[iter-1])), verbose)
 
     if iter > 0 and (llh[iter] - llh[iter-1])/abs(llh[iter-1]) < tol:
-        print_t('Conveged in {} iterations'.format(iter+1), verbose)
-        return True
+        if llh[iter] - llh[iter-1] > 0:
+            print_t('Conveged in {} iterations'.format(iter+1), verbose)
+            return iter
+        else:
+            print_t('Conveged in {} iterations (Igoring iteration after maximum was reached)'.format(iter+1), verbose)
+            return iter-1
     elif iter >= maxiter-1:
         print_t('Did not converge in maximum iterations')
-        return True
+        return iter
 
-    return False
+    return -1
 
 
 # Definition of bounds solutions for Kappa (3.7)(3.8)(3.9) [1]
