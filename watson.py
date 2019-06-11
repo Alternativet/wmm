@@ -35,7 +35,7 @@ def wmm_pdf(X, Mu, Kappa, Pi):
     return np.sum([pi * pdf(X, mu, kappa) for mu, kappa, pi in zip(Mu, Kappa, Pi)], axis=0)
 
 
-def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None, init=None, return_steps=False):
+def wmm_fit(X, k, maxiter=200, tol=1e-4, verbose=False, seed=None, init=None, return_steps=False, gamma=0):
     """Fits a mixture of Watsons
 
     Parameters
@@ -82,7 +82,7 @@ def wmm_fit(X, k, maxkappa=700, maxiter=200, tol=1e-4, verbose=False, seed=None,
     # EM loop
     while converged < 0:
         beta, llh[iter] = e_step(X, mu, kappa, pi, k, p)
-        mu, kappa, pi, bounds = m_step(X, mu, beta, k, N, p, maxkappa)
+        mu, kappa, pi, bounds = m_step(X, mu, beta, k, N, p, gamma)
         converged = convergence(llh, iter, maxiter, tol, verbose)
         Mu[iter] = mu
         Kappa[iter] = kappa
@@ -140,7 +140,7 @@ def e_step(X, mu, kappa, pi, k, p):
     return beta, llh
 
 
-def m_step(X, mu, beta, k, N, p, maxkappa):
+def m_step(X, mu, beta, k, N, p, gamma):
     bounds = np.zeros((k, 3))
 
     # Maximization
@@ -154,11 +154,13 @@ def m_step(X, mu, beta, k, N, p, maxkappa):
         idx = np.argmax(w)
         mu[j, :] = np.real(v[:, idx])
         # Compute Kappa using (4.5) [1]
-        r = np.einsum('i,ji,j->', mu[j, :], Sj, mu[j, :])  # mu'*Sj*mu
+        r = np.real(w[idx])
         r = 0.99 if r > 0.999 else r
         bounds[j, :] = [lower_bound(1/2, p/2, r), bound(1/2, p/2, r), upper_bound(1/2, p/2, r)]
         kappa[j] = bounds[j, 1]
-        kappa[j] = kappa[j] if maxkappa > kappa[j] else maxkappa
+
+    # Reguralize
+    kappa = [k + gamma*(kappa.mean() - k) for k in kappa]
 
     return mu, kappa, pi, bounds
 
@@ -166,7 +168,9 @@ def m_step(X, mu, beta, k, N, p, maxkappa):
 def convergence(llh, iter, maxiter, tol, verbose):
     # Convergece
     if iter > 0:
-        print_t('Iteration: {:d}, relative llh change: {:.2g}'.format(iter+1, (llh[iter] - llh[iter-1])/abs(llh[iter-1])), verbose)
+        print_t('Iteration: {:d}, llh: {:.2g}, relative llh change: {:.2g}'.format(iter+1, llh[iter], (llh[iter] - llh[iter-1])/abs(llh[iter-1])), verbose)
+    else:
+        print_t('Iteration: {:d}, llh: {:.2g}'.format(iter+1, llh[iter]), verbose)
 
     if iter > 0 and (llh[iter] - llh[iter-1])/abs(llh[iter-1]) < tol:
         if llh[iter] - llh[iter-1] > 0:
