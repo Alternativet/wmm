@@ -45,7 +45,7 @@ def wmm_fit(X, k, maxiter=200, tol=1e-4, verbose=False, seed=None, init=None, re
     init: How to initialize the model.
         "random" for random initialization
         "spiral" for initialization based on golden spiral method (only works for 3d)
-        a list of [Mu, Kappa, Pi] for another predetermined initialization
+        a dict with keys 'mu', 'kappa', 'pi' for another predetermined initialization
     """
 
     np.random.seed(seed)
@@ -157,10 +157,10 @@ def m_step(X, mu, beta, k, N, p, gamma):
         r = np.real(w[idx])
         r = 0.99 if r > 0.999 else r
         bounds[j, :] = [lower_bound(1/2, p/2, r), bound(1/2, p/2, r), upper_bound(1/2, p/2, r)]
-        kappa[j] = bounds[j, 1]
 
     # Reguralize
-    kappa = [k + gamma*(kappa.mean() - k) for k in kappa]
+    bounds = bounds + gamma*(bounds.mean(axis=0) - bounds)
+    kappa = bounds[:, 1]
 
     return mu, kappa, pi, bounds
 
@@ -199,7 +199,7 @@ def upper_bound(a, c, r):
     return (r*c-a)/(r*(1-r))*(1+r/a)
 
 
-def kummer(a, b, kappa, tol=1e-10):
+def kummer(a, b, kappa, tol=1e-10, return_iter=False):
     term = a*kappa/b
     f = 1+term
     j = 1
@@ -210,6 +210,8 @@ def kummer(a, b, kappa, tol=1e-10):
         term *= a*kappa/b/j
         f += term
 
+    if return_iter:
+        return f, j
     return f
 
 
